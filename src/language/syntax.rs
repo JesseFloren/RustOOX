@@ -238,6 +238,11 @@ pub enum Statement {
         #[derivative(PartialEq = "ignore")]
         info: SourcePos,
     },
+    Fork {
+        invocation: Invocation,
+        #[derivative(PartialEq = "ignore")]
+        info: SourcePos,
+    },
     Skip,
     Assert {
         assertion: Rc<Expression>,

@@ -779,7 +779,14 @@ fn mutate_body(
                 .map(|invocation| Statement::Call { invocation, info });
             let stats = apply_stat(mutation, statement.clone());
             mutated_invocations.chain(stats).collect()
-        }
+        },
+        Statement::Fork { invocation, .. } => {
+            let mutated_invocations = mutate_invocation(mutation, invocation, env)
+                .into_iter()
+                .map(|invocation| Statement::Fork { invocation, info });
+            let stats = apply_stat(mutation, statement.clone());
+            mutated_invocations.chain(stats).collect()
+        },
         Statement::Skip => apply_stat(mutation, statement.clone()),
         Statement::Assert {
             assertion: _assertion,
@@ -858,6 +865,7 @@ fn deletable_stat(statement: &Statement) -> bool {
         Statement::Declare { .. } => false,
         Statement::Assign { .. } => true,
         Statement::Call { .. } => true,
+        Statement::Fork { .. } => true,
         Statement::Skip { .. } => false,
         Statement::Assert { .. } => false,
         Statement::Assume { .. } => false,

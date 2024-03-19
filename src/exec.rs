@@ -86,6 +86,13 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct Thread {
+    tid: usize,
+    pc: u64,
+    pub stack: Stack,
+}
+
 /// The state of a path.
 #[derive(Clone)]
 pub struct State {

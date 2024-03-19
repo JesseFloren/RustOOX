@@ -168,6 +168,10 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
         info: invocation.get_position(),
         invocation,
     });
+    let fork = (keyword("fork") * invocation() - punct(";")).map(|invocation| Statement::Fork {
+        info: invocation.get_position(),
+        invocation,
+    });
     let skip = punct(";").map(|_| Statement::Skip);
     let assert = (keyword("assert") + verification_expression().map(Rc::new) - punct(";")).map(
         |(assert_token, assertion)| Statement::Assert {
@@ -235,6 +239,7 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
     let p_statement = declaration
         | assignment
         | call_
+        | fork
         | skip
         | assert
         | assume

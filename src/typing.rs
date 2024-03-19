@@ -6,7 +6,7 @@ use std::rc::Rc;
 /// If type incorrect, a TypeError is returned instead.
 ///
 /// Also any method invocations in the bodies of the methods are resolved, by assigning a reference to the invoked method(s).
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use itertools::Either;
 use queues::IsQueue;
@@ -289,7 +289,11 @@ fn type_statement(
             Statement::Call { invocation, info } => {
                 let invocation = type_invocation(invocation, env, st, declaration)?;
                 statements.push(Statement::Call { invocation, info });
-            }
+            },
+            Statement::Fork { invocation, info } => {
+                let invocation = type_invocation(invocation, env, st, declaration)?;
+                statements.push(Statement::Fork { invocation, info });
+            },
             Statement::Skip => statements.push(Statement::Skip),
             Statement::Assert { assertion, info } => {
                 let assertion = type_expression(assertion.into(), env, st)?;

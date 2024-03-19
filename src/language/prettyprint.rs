@@ -422,6 +422,13 @@ impl<'a, D: DocAllocator<'a>> pretty::Pretty<'a, D> for &Statement {
             ],
 
             Statement::Call { invocation, .. } => invocation.pretty(allocator).append(semicolon()),
+            Statement::Fork { invocation, .. } => docs![
+                allocator,
+                "fork",
+                " ",
+                invocation.pretty(allocator),
+                semicolon()
+            ],
             Statement::Skip => allocator.text(";"),
             Statement::Assert { assertion, .. } => docs![
                 allocator,

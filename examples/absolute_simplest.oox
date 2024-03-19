@@ -1,7 +1,12 @@
 class Foo {
 
-    static void f() {
+    static void f(Foo foo) {
         int x := 3;
+        fork foo.b();
         assert(x == 3);
+    }
+
+    void b() {
+        
     }
 }
