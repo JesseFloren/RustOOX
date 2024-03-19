@@ -25,7 +25,7 @@ pub(crate) fn sym_exec(
     let mut remaining_states = vec![state];
 
     while let Some(state) = remaining_states.pop() {
-        let current_pc = state.pc;
+        let current_pc = state.threads[&state.active_thread].pc;
         let step = execute_instruction_for_all_states(
             vec![state],
             program,

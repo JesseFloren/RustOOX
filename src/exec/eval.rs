@@ -60,6 +60,7 @@ fn eval_locally(
         }
         Expression::Var { var, .. } => {
             let o = state
+                .threads[&state.active_thread]
                 .stack
                 .lookup(var)
                 .unwrap_or_else(|| panic!("infeasible, object does not exist: {:?}", var));
@@ -69,7 +70,7 @@ fn eval_locally(
         Expression::SymbolicVar { .. } => expression,
         Expression::Lit { .. } => expression,
         Expression::SizeOf { var, .. } => {
-            let expr = single_alias_elimination(state.stack.lookup(var).unwrap(), &state.alias_map);
+            let expr = single_alias_elimination(state.threads[&state.active_thread].stack.lookup(var).unwrap(), &state.alias_map);
 
             match expr.as_ref() {
                 Expression::Lit {
@@ -391,7 +392,7 @@ fn evaluate_quantifier<'a, F>(
 where
     F: Fn(Vec<Rc<Expression>>) -> Rc<Expression>,
 {
-    let array = state.stack.lookup(domain).unwrap();
+    let array = state.threads[&state.active_thread].stack.lookup(domain).unwrap();
     let array = evaluate(state, array, en);
 
     let array = single_alias_elimination(array, &state.alias_map);
@@ -415,11 +416,11 @@ where
                     let element = heap::get_element(i, *ref_, &state.heap);
                     let index = to_int_expr(i as i64);
 
-                    state.stack.insert_variable(elem.clone(), element);
-                    state.stack.insert_variable(range.clone(), index);
+                    state.threads.get_mut(&state.active_thread).unwrap().stack.insert_variable(elem.clone(), element);
+                    state.threads.get_mut(&state.active_thread).unwrap().stack.insert_variable(range.clone(), index);
                     let value = evaluate(state, formula.clone(), en);
-                    state.stack.remove_variable(elem);
-                    state.stack.remove_variable(range);
+                    state.threads.get_mut(&state.active_thread).unwrap().stack.remove_variable(elem);
+                    state.threads.get_mut(&state.active_thread).unwrap().stack.remove_variable(range);
 
                     value
                 })

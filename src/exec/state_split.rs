@@ -38,7 +38,7 @@ pub fn conditional_state_split(
     let mut true_state = en.clone_state_with_new_path_id(state);
     let feasible_path = exec_assume(&mut true_state, Either::Left(guard.clone()), en);
     if feasible_path {
-        true_state.stack.insert_variable(lhs_name.clone(), true_lhs);
+        true_state.threads.get_mut(&true_state.active_thread).unwrap().stack.insert_variable(lhs_name.clone(), true_lhs);
         en.add_remaining_state(true_state);
     }
     // continue with false state
@@ -49,7 +49,7 @@ pub fn conditional_state_split(
         en,
     );
     if feasible_path {
-        false_state.stack.insert_variable(lhs_name, false_lhs);
+        false_state.threads.get_mut(&false_state.active_thread).unwrap().stack.insert_variable(lhs_name, false_lhs);
     }
 }
 

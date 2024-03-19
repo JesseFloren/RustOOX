@@ -30,7 +30,7 @@ impl BTree {
     fn statement(&self) -> u64 {
         match self {
             BTree::Node { statement, .. } => *statement,
-            BTree::Leaf(states) => states[0].pc,
+            BTree::Leaf(states) => states[0].threads[&states[0].active_thread].pc,
         }
     }
 

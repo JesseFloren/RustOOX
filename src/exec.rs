@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, ops::AddAssign, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ops::AddAssign, os::{macos::raw::stat, unix::thread}, rc::Rc};
 
 use clap::ValueEnum;
 use im_rc::{vector, HashMap as ImHashMap, HashSet as ImHashSet};
@@ -16,16 +16,17 @@ pub(crate) mod constants;
 pub(crate) mod heap;
 mod heuristics;
 mod invocation;
+mod fork;
+mod mpor;
 mod state_split;
 
 use crate::{
     cfg::{labelled_statements, CFGStatement, MethodIdentifier},
     concretization::{concretizations, find_symbolic_refs},
-    dsl::{equal, ite, negate, to_int_expr, and},
+    dsl::{and, equal, ite, negate, to_int_expr},
     exception_handler::{ExceptionHandlerEntry, ExceptionHandlerStack},
     exec::{
-        eval::{evaluate, evaluate_as_int},
-        invocation::InvocationContext,
+        eval::{evaluate, evaluate_as_int}, fork::fork_invocation, invocation::InvocationContext
     },
     insert_exceptional_clauses, language, parse_program,
     positioned::{SourcePos, WithPosition},
@@ -88,7 +89,7 @@ where
 
 #[derive(Clone)]
 pub struct Thread {
-    tid: usize,
+    tid: u64,
     pc: u64,
     pub stack: Stack,
 }
@@ -97,8 +98,10 @@ pub struct Thread {
 #[derive(Clone)]
 pub struct State {
     /// The current 'program counter' this state is at in the control flow graph
-    pc: u64,
-    pub stack: Stack,
+    pub active_thread: u64,
+    pub threads: HashMap<u64, Thread>,
+    pub thread_counter: IdCounter<u64>,
+
     pub heap: Heap,
 
     constraints: PathConstraints,
@@ -115,7 +118,7 @@ pub struct State {
 impl Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("State")
-            .field("pc", &self.pc)
+            .field("pc", &self.threads[&self.active_thread].pc)
             // .field("stack", &self.stack)
             // .field("heap", &self.heap)
             // .field("precondition", &self.precondition)
@@ -249,6 +252,7 @@ enum ActionResult {
     Continue,
     Return(u64),
     FunctionCall(u64),
+    InvalidFork(SourcePos),
     InvalidAssertion(SourcePos),
     InfeasiblePath,
     Finish,
@@ -260,13 +264,13 @@ fn action(
     program: &HashMap<u64, CFGStatement>,
     en: &mut impl Engine,
 ) -> ActionResult {
-    let pc = state.pc;
+    let pc = state.threads.get_mut(&state.active_thread).unwrap().pc;
     let action = &program[&pc];
 
     //use language::prettyprint::cfg_pretty;
 
     debug!(state.logger, "Action {}", action;
-     "stack" => ?state.stack.current_stackframe(),
+     "stack" => ?state.threads.get_mut(&state.active_thread).unwrap().stack.current_stackframe(),
      "heap" => ?state.heap,
      "alias_map" => ?state.alias_map
     //  "constraints" => ?state.constraints,
@@ -274,7 +278,7 @@ fn action(
 
     match action {
         CFGStatement::Statement(Statement::Declare { type_, var, .. }) => {
-            state
+            state.threads.get_mut(&state.active_thread).unwrap()
                 .stack
                 .insert_variable(var.clone(), Rc::new(type_.default()));
 
@@ -322,12 +326,12 @@ fn action(
         CFGStatement::Statement(Statement::Return { expression, .. }) => {
             if let Some(expression) = expression {
                 let expression = evaluate(state, expression.clone(), en);
-                state.stack.insert_variable(constants::retval(), expression);
+                state.threads.get_mut(&state.active_thread).unwrap().stack.insert_variable(constants::retval(), expression);
             }
             ActionResult::Continue
         }
         CFGStatement::FunctionEntry { .. } => {
-            let StackFrame { current_member, .. } = state.stack.current_stackframe().unwrap();
+            let StackFrame { current_member, .. } = state.threads.get_mut(&state.active_thread).unwrap().stack.current_stackframe().unwrap();
             if let Some((requires, type_guard)) = current_member.requires() {
                 // if this is the program entry, assume that `requires(..)` is true, otherwise assert it.
                 if state.path_length == 0 {
@@ -374,7 +378,7 @@ fn action(
         CFGStatement::FunctionExit { .. } => {
             state.exception_handler.decrement_handler();
 
-            let StackFrame { current_member, .. } = state.stack.current_stackframe().unwrap();
+            let StackFrame { current_member, .. } = state.threads.get_mut(&state.active_thread).unwrap().stack.current_stackframe().unwrap();
             if let Some((post_condition, type_guard)) = current_member.post_condition() {
                 let expression = prepare_assert_expression(state, post_condition.clone(), en);
                 let is_valid = eval_assertion(state, expression, en);
@@ -389,7 +393,7 @@ fn action(
                     }
                 }
             }
-            if state.stack.len() == 1 {
+            if state.threads.get_mut(&state.active_thread).unwrap().stack.len() == 1 {
                 ActionResult::Continue
             } else {
                 let StackFrame {
@@ -397,7 +401,7 @@ fn action(
                     params,
                     current_member,
                     return_pc,
-                } = state.stack.pop().unwrap();
+                } = state.threads.get_mut(&state.active_thread).unwrap().stack.pop().unwrap();
                 let return_type = current_member.type_of();
                 if return_type != RuntimeType::VoidRuntimeType {
                     if let Some(lhs) = returning_lhs {
@@ -414,6 +418,16 @@ fn action(
             }
         }
         CFGStatement::Statement(Statement::Call { invocation, .. }) => exec_invocation(
+            state,
+            InvocationContext {
+                invocation,
+                lhs: None,
+                return_point: pc,
+                program,
+            },
+            en,
+        ),
+        CFGStatement::Statement(Statement::Fork { invocation, .. }) => exec_fork(
             state,
             InvocationContext {
                 invocation,
@@ -442,6 +456,7 @@ fn action(
 
 fn exec_throw(state: &mut State, en: &mut impl Engine, message: &str) -> ActionResult {
     info!(state.logger, "executing throw");
+
     if let Some(ExceptionHandlerEntry {
         catch_pc,
         mut current_depth,
@@ -449,7 +464,7 @@ fn exec_throw(state: &mut State, en: &mut impl Engine, message: &str) -> ActionR
     {
         // A catch was found, starting from now untill the catch we check any exceptional(..) clauses.
         while current_depth > 0 {
-            if let Some((exceptional, type_guard)) = state
+            if let Some((exceptional, type_guard)) = state.threads.get_mut(&state.active_thread).unwrap()
                 .stack
                 .pop()
                 .and_then(|frame| frame.current_member.exceptional())
@@ -463,13 +478,13 @@ fn exec_throw(state: &mut State, en: &mut impl Engine, message: &str) -> ActionR
         ActionResult::Return(catch_pc)
     } else {
         // No catch found, starting from now untill the initial method we check any exceptional(..) clauses.
-        while let Some(stack_frame) = state.stack.current_stackframe() {
+        while let Some(stack_frame) = state.threads.get_mut(&state.active_thread).unwrap().stack.current_stackframe() {
             if let Some((exceptional, type_guard)) = stack_frame.current_member.exceptional() {
                 if !assert_exceptional(state, en, exceptional.clone(), type_guard, message) {
                     return ActionResult::InvalidAssertion(exceptional.get_position());
                 }
             }
-            state.stack.pop();
+            state.threads.get_mut(&state.active_thread).unwrap().stack.pop();
         }
         ActionResult::Finish
     }
@@ -718,6 +733,56 @@ fn exec_invocation(
                 invocation::single_method_invocation(state, context, potential_method, en);
             ActionResult::FunctionCall(next_entry)
         }
+    }
+}
+
+/// Handles an fork statement in OOX.
+///
+/// This may result in state splitting due to dynamic binding, states are appended to the engine.
+fn exec_fork(
+    state: &mut State,
+    context: InvocationContext,
+    en: &mut impl Engine,
+) -> ActionResult {
+    // dbg!(invocation);
+
+    debug!(state.logger, "Invocation"; "invocation" => %context.invocation);
+
+    state.exception_handler.increment_handler();
+
+    match context.invocation {
+        Invocation::InvokeMethod {
+            resolved,
+            info,
+            ..
+        } => {
+            let potential_methods = resolved.as_ref().unwrap();
+
+            if potential_methods.len() == 1 {
+                debug!(state.logger, "only one potential method, resolved");
+                let (_, potential_method) = &potential_methods.iter().next().unwrap();
+                fork_invocation(state, context, potential_method, en);
+                println!("Found Fork");
+                ActionResult::Continue
+            } else {
+                error!(state.logger, "Foxrk can only have a Single possible method invocation");
+                ActionResult::InvalidFork(*info)
+            }
+            
+        },
+        Invocation::InvokeSuperMethod {  info, .. } => {
+            error!(state.logger, "Fork can only have a Method invocation, found SuperMethod");
+            ActionResult::InvalidFork(*info)
+        },
+        Invocation::InvokeConstructor { info, ..} => {
+            error!(state.logger, "Fork can only have a Method invocation, found Constructor");
+            ActionResult::InvalidFork(*info)
+        },
+        Invocation::InvokeSuperConstructor { info, .. } => {
+            error!(state.logger, "Fork can only have a Method invocation, found SuperConstructor");
+            ActionResult::InvalidFork(*info)
+        },
+        
     }
 }
 
@@ -1014,12 +1079,13 @@ fn init_symbolic_object(
 
 fn execute_assign(state: &mut State, lhs: &Lhs, e: Rc<Expression>, en: &mut impl Engine) {
     // let st = en.symbol_table();
+
     match lhs {
         Lhs::LhsVar { var, .. } => {
-            state.stack.insert_variable(var.clone(), e);
+            state.threads.get_mut(&state.active_thread).unwrap().stack.insert_variable(var.clone(), e);
         }
         Lhs::LhsField { var, field, .. } => {
-            let o = state
+            let o = state.threads.get_mut(&state.active_thread).unwrap()
                 .stack
                 .lookup(var)
                 .unwrap_or_else(|| panic!("object {:?} was not found on the stack", var));
@@ -1064,7 +1130,7 @@ fn execute_assign(state: &mut State, lhs: &Lhs, e: Rc<Expression>, en: &mut impl
             }
         }
         Lhs::LhsElem { var, index, .. } => {
-            let ref_ = state
+            let ref_ = state.threads.get_mut(&state.active_thread).unwrap()
                 .stack
                 .lookup(var)
                 .unwrap_or_else(|| panic!("array {:?} was not found on the stack", var));
@@ -1083,14 +1149,16 @@ fn execute_assign(state: &mut State, lhs: &Lhs, e: Rc<Expression>, en: &mut impl
 }
 
 fn evaluate_rhs(state: &mut State, rhs: &Rhs, en: &mut impl Engine) -> Rc<Expression> {
+    let thread = state.threads.get_mut(&state.active_thread).unwrap();
+
     match rhs {
         Rhs::RhsExpression { value, .. } => {
             match value.as_ref() {
-                Expression::Var { var, .. } => state.stack.lookup(var).unwrap_or_else(|| {
+                Expression::Var { var, .. } => thread.stack.lookup(var).unwrap_or_else(|| {
                     panic!(
                         "Could not find {:?} on the stack {:?}",
                         var,
-                        &state.stack.current_variables()
+                        &thread.stack.current_variables()
                     )
                 }),
                 _ => value.clone(), // might have to expand on this when dealing with complex quantifying expressions and array
@@ -1098,7 +1166,7 @@ fn evaluate_rhs(state: &mut State, rhs: &Rhs, en: &mut impl Engine) -> Rc<Expres
         }
         Rhs::RhsField { var, field, .. } => {
             if let Expression::Var { var, .. } = var.as_ref() {
-                let object = state.stack.lookup(var).unwrap();
+                let object = thread.stack.lookup(var).unwrap();
                 exec_rhs_field(state, object, field, en)
             } else {
                 panic!(
@@ -1110,7 +1178,7 @@ fn evaluate_rhs(state: &mut State, rhs: &Rhs, en: &mut impl Engine) -> Rc<Expres
         // where in each state the aliasmap is left with one concrete array.
         Rhs::RhsElem { var, index, .. } => {
             if let Expression::Var { var, .. } = var.as_ref() {
-                let array = state.stack.lookup(var).unwrap();
+                let array = thread.stack.lookup(var).unwrap();
                 exec_rhs_elem(state, array, index.to_owned().into(), en)
             } else {
                 panic!("Unexpected uninitialized array");
@@ -1127,11 +1195,11 @@ fn evaluate_rhs(state: &mut State, rhs: &Rhs, en: &mut impl Engine) -> Rc<Expres
             ..
         } => exec_array_construction(state, array_type, sizes, type_, en),
         Rhs::RhsCast { cast_type, var, .. } => {
-            let object = state.stack.lookup(var).unwrap_or_else(|| {
+            let object = thread.stack.lookup(var).unwrap_or_else(|| {
                 panic!(
                     "Could not find {:?} on the stack {:?}",
                     var,
-                    &state.stack.current_variables()
+                    &thread.stack.current_variables()
                 )
             });
 
@@ -1408,7 +1476,7 @@ fn get_expression_for_var(
     var: &Identifier,
     en: &mut impl Engine,
 ) -> Rc<Expression> {
-    let symbolic_ref = state.stack.lookup(var).unwrap();
+    let symbolic_ref = state.threads.get_mut(&state.active_thread).unwrap().stack.lookup(var).unwrap();
 
     evaluate(state, symbolic_ref, en)
 }
@@ -1418,7 +1486,7 @@ fn get_alias_for_var<'a>(
     var: &Identifier,
     en: &mut impl Engine,
 ) -> &'a mut AliasEntry {
-    let symbolic_ref = state.stack.lookup(var).unwrap();
+    let symbolic_ref = state.threads.get_mut(&state.active_thread).unwrap().stack.lookup(var).unwrap();
 
     let symbolic_ref = evaluate(state, symbolic_ref, en)
         .expect_symbolic_ref()
@@ -1661,7 +1729,7 @@ pub fn verify(
         &symbol_table,
     );
     // dbg!(&params);
-    let params = initial_method
+    let params: HashMap<Identifier, Rc<Expression>> = initial_method
         .params
         .iter()
         .map(|p| {
@@ -1704,14 +1772,21 @@ pub fn verify(
     let mut constraints = ImHashSet::new();
     constraints.insert(Rc::new(Expression::TRUE));
 
-    let state = State {
+    let thread: Thread = Thread {
+        tid: 0,
         pc,
         stack: Stack::new(vector![StackFrame {
             return_pc: pc,
             returning_lhs: None,
-            params,
+            params: params,
             current_member: initial_method,
-        }]),
+        }])
+    };
+
+    let state = State {
+        active_thread: 0,
+        threads: HashMap::from([(0, thread)]),
+        thread_counter: IdCounter::new(1),
         heap: ImHashMap::new(),
         constraints,
         alias_map: ImHashMap::new(),

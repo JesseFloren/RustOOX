@@ -91,7 +91,7 @@ pub(super) fn multiple_method_invocation(
     en: &mut impl Engine,
 ) -> ActionResult {
     info!(state.logger, "Multiple method invocation");
-    let object = &state.stack.lookup(invocation_lhs).unwrap();
+    let object = &state.threads[&state.active_thread].stack.lookup(invocation_lhs).unwrap();
     // object can be either a concrete reference to a heap object, or a symbolic object
     // the latter means that we have to split states here, one path for each distinct method that is resolved to,
     // if all aliases resolve to the same method, then we can also continue with that path
@@ -368,6 +368,7 @@ pub(super) fn exec_super_constructor(
 
     // instead of allocating a new object, add the new fields to the existing 'this' object.
     let object_ref = state
+        .threads[&state.active_thread]
         .stack
         .lookup(&constants::this_str())
         .expect("super() is called in a constructor with a 'this' object on the stack");
@@ -403,7 +404,7 @@ fn push_stack_frame<'a, P>(
         params,
         current_member: method,
     };
-    state.stack.push(stack_frame);
+    state.threads.get_mut(&state.active_thread).unwrap().stack.push(stack_frame);
 }
 
 /// Helper function to get and evaluate arguments from invocation.

@@ -104,7 +104,7 @@ impl ExecutionTree {
         } = self
         {
             // Set the states
-            *statement = new_states[0].pc;
+            *statement = new_states[0].threads[&new_states[0].active_thread].pc;
             *states = new_states;
         } else {
             panic!("Can only set states at the leafs")
@@ -144,7 +144,7 @@ pub(super) fn sym_exec_execution_tree(
 ) -> SymResult {
     let tree = Rc::new(RefCell::new(ExecutionTree::Leaf {
         parent: Weak::new(),
-        statement: state.pc,
+        statement: state.threads[&state.active_thread].pc,
         states: vec![state],
     }));
 
@@ -189,7 +189,7 @@ pub(super) fn sym_exec_execution_tree(
                     //     pc,
                     //     states.iter().map(|s| s.pc).collect_vec()
                     // );
-                    assert!(states.iter().all(|s| s.pc == *pc));
+                    assert!(states.iter().all(|s| s.threads[&s.active_thread].pc == *pc));
                 }
 
                 match new_states.len() {

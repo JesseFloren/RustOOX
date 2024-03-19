@@ -1,15 +1,11 @@
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc};
 
+use im_rc::vector;
 use itertools::Itertools;
 use slog::{o, Logger};
 
 use crate::{
-    cfg::CFGStatement,
-    exec::{action, ActionResult},
-    positioned::SourcePos,
-    statistics::Statistics,
-    symbol_table::SymbolTable,
-    Options,
+    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, Thread}, positioned::SourcePos, stack::{Stack, StackFrame}, statistics::Statistics, symbol_table::SymbolTable, Options
 };
 
 use execution_tree::ExecutionTree;
@@ -45,7 +41,7 @@ fn execute_instruction_for_all_states(
 ) -> Result<HashMap<u64, Vec<State>>, SourcePos> {
     assert!(!states.is_empty());
 
-    statistics.measure_statement_explored(states[0].pc);
+    statistics.measure_statement_explored(states[0].threads[&states[0].active_thread].pc);
     let mut remaining_states = states;
 
     let mut resulting_states: HashMap<u64, Vec<State>> = HashMap::new();
@@ -57,7 +53,7 @@ fn execute_instruction_for_all_states(
     // );
 
     while let Some(mut state) = remaining_states.pop() {
-        debug_assert!(remaining_states.iter().map(|s| s.pc).all_equal());
+        debug_assert!(remaining_states.iter().map(|s| s.threads[&s.active_thread].pc).all_equal());
 
         // dbg!(&remaining_states.len());
         if state.path_length >= options.k
@@ -80,67 +76,76 @@ fn execute_instruction_for_all_states(
                 options,
             },
         );
-        match next {
-            ActionResult::FunctionCall(next) => {
-                // function call or return
-                state.pc = next;
-                resulting_states.entry(state.pc).or_default().push(state);
-            }
-            ActionResult::Return(return_pc) => {
-                if let Some(neighbours) = flows.get(&return_pc) {
-                    // A return statement always connects to one
-                    debug_assert!(neighbours.len() == 1);
-                    let mut neighbours = neighbours.iter();
-                    let first_neighbour = neighbours.next().unwrap();
-                    state.pc = *first_neighbour;
+        for key in state.threads.keys() {
+            let mut trans_state = state.clone();
+            trans_state.active_thread = *key;
+            match next {
+                ActionResult::FunctionCall(next) => {
+                    // function call or return
+                    let thread = trans_state.threads.get_mut(&trans_state.active_thread).unwrap();
+                    thread.pc = next;
+                    resulting_states.entry(thread.pc).or_default().push(trans_state);
+                },
+                ActionResult::Return(return_pc) => {
+                    if let Some(neighbours) = flows.get(&return_pc) {
+                        // A return statement always connects to one
+                        debug_assert!(neighbours.len() == 1);
+                        let mut neighbours = neighbours.iter();
+                        let first_neighbour = neighbours.next().unwrap();
+                        let thread = trans_state.threads.get_mut(&trans_state.active_thread).unwrap();
+                        thread.pc = *first_neighbour;
 
-                    resulting_states.entry(state.pc).or_default().push(state);
-                } else {
-                    panic!("function pc does not exist");
-                }
-            }
-            ActionResult::Continue => {
-                if let Some(neighbours) = flows.get(&state.pc) {
-                    //dbg!(&neighbours);
-                    statistics.measure_branches((neighbours.len() - 1) as u32);
-
-                    let mut neighbours = neighbours.iter();
-                    let first_neighbour = neighbours.next().unwrap();
-                    state.pc = *first_neighbour;
-                    state.path_length += 1;
-
-                    let new_path_ids = (1..).map(|_| path_counter.borrow_mut().next_id());
-
-                    for (neighbour_pc, path_id) in neighbours.zip(new_path_ids) {
-                        let mut new_state = state.clone();
-                        new_state.path_id = path_id;
-                        new_state.pc = *neighbour_pc;
-                        new_state.logger = root_logger.new(o!("path_id" => path_id));
-
-                        resulting_states
-                            .entry(new_state.pc)
-                            .or_default()
-                            .push(new_state);
-                    }
-                    resulting_states.entry(state.pc).or_default().push(state);
-                } else {
-                    // Function exit of the main function under verification
-                    if let CFGStatement::FunctionExit { .. } = &program[&state.pc] {
-                        // Valid program exit, continue
-                        statistics.measure_finish();
+                        resulting_states.entry(thread.pc).or_default().push(trans_state);
                     } else {
-                        panic!("Unexpected end of CFG");
+                        panic!("function pc does not exist");
                     }
                 }
-            }
-            ActionResult::InvalidAssertion(info) => {
-                return Err(info);
-            }
-            ActionResult::InfeasiblePath => {
-                statistics.measure_prune();
-            }
-            ActionResult::Finish => {
-                statistics.measure_finish();
+                ActionResult::Continue => {
+                    if let Some(neighbours) = flows.get(&trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc) {
+                        //dbg!(&neighbours);
+                        statistics.measure_branches((neighbours.len() - 1) as u32);
+
+                        let mut neighbours = neighbours.iter();
+                        let first_neighbour = neighbours.next().unwrap();
+                        trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc = *first_neighbour;
+                        trans_state.path_length += 1;
+
+                        let new_path_ids = (1..).map(|_| path_counter.borrow_mut().next_id());
+
+                        for (neighbour_pc, path_id) in neighbours.zip(new_path_ids) {
+                            let mut new_state = trans_state.clone();
+                            new_state.path_id = path_id;
+                            new_state.threads.get_mut(&new_state.active_thread).unwrap().pc = *neighbour_pc;
+                            new_state.logger = root_logger.new(o!("path_id" => path_id));
+
+                            resulting_states
+                                .entry(new_state.threads.get_mut(&new_state.active_thread).unwrap().pc)
+                                .or_default()
+                                .push(new_state);
+                        }
+                        resulting_states.entry(trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc).or_default().push(trans_state);
+                    } else {
+                        // Function exit of the main function under verification
+                        if let CFGStatement::FunctionExit { .. } = &program[&trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc] {
+                            // Valid program exit, continue
+                            statistics.measure_finish();
+                        } else {
+                            panic!("Unexpected end of CFG");
+                        }
+                    }
+                }
+                ActionResult::InvalidAssertion(info) => {
+                    return Err(info);
+                },
+                ActionResult::InvalidFork(info) => {
+                    return Err(info);
+                }
+                ActionResult::InfeasiblePath => {
+                    statistics.measure_prune();
+                }
+                ActionResult::Finish => {
+                    statistics.measure_finish();
+                }
             }
         }
     }
@@ -148,6 +153,14 @@ fn execute_instruction_for_all_states(
     // if resulting_states.is_empty() {
     //     dbg!(&program[&current_pc.unwrap()]);
     // }
+
+    for (pc, states) in resulting_states.clone() {
+        let filtered_states: Vec<State> = states
+            .into_iter()
+            .filter(|s| validate_quasi_monotonicity(s.clone(), program[&s.threads[&s.active_thread].pc].clone()))
+            .collect();
+        resulting_states.insert(pc, filtered_states);
+    }
 
     // Finished
     Ok(resulting_states)
