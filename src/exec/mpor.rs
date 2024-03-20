@@ -1,6 +1,5 @@
 use std::{collections::HashSet, rc::Rc};
 
-use clap::Id;
 use itertools::Itertools;
 
 use crate::{cfg::CFGStatement, stack::Stack, Expression, Identifier, Lhs, Reference, Rhs, Statement};
@@ -8,7 +7,6 @@ use crate::{cfg::CFGStatement, stack::Stack, Expression, Identifier, Lhs, Refere
 use super::{Access, AliasMap, State};
 
 pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGStatement) -> bool {
-    let pc = state.threads[&state.active_thread].pc;
     let curr_accesses = get_all_accesses(statement.clone(), state.threads[&state.active_thread].stack.clone(), state.alias_map.clone());
 
     let mut out: bool = true;
@@ -27,7 +25,7 @@ pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGState
 
 fn get_all_accesses(statement: CFGStatement, stack: Stack, alias_map: AliasMap) -> Vec<Access> {
     match statement {
-        CFGStatement::Statement(Statement::Assign { lhs, rhs, info  }) => {
+        CFGStatement::Statement(Statement::Assign { lhs, rhs, ..  }) => {
             let mut accesses = vec![];
             match lhs.clone()  {
                 Lhs::LhsField { var, field, .. } => {

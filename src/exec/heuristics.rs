@@ -1,11 +1,10 @@
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc};
 
-use im_rc::vector;
-use itertools::Itertools;
+
 use slog::{o, Logger};
 
 use crate::{
-    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, Thread, ThreadState}, positioned::SourcePos, stack::{Stack, StackFrame}, statistics::Statistics, symbol_table::SymbolTable, Options
+    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, ThreadState}, positioned::SourcePos, statistics::Statistics, symbol_table::SymbolTable, Options
 };
 
 use execution_tree::ExecutionTree;
