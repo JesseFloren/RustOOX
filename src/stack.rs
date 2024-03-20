@@ -4,7 +4,7 @@ use im_rc::Vector;
 
 use crate::syntax::{Expression, Identifier, Lhs, Method};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Stack(Vector<StackFrame>);
 
 impl Stack {

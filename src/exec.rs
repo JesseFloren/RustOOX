@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, ops::AddAssign, os::{macos::raw::stat, unix::thread}, rc::Rc};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, ops::AddAssign, os::{macos::raw::stat, unix::thread}, rc::Rc, vec};
 
 use clap::ValueEnum;
 use im_rc::{vector, HashMap as ImHashMap, HashSet as ImHashSet};
@@ -87,10 +87,26 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+pub enum Access {
+    FieldWrite(HashSet<Reference>, Identifier),
+    FieldRead(HashSet<Reference>, Identifier), 
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThreadState {
+    Enabled,
+    Disabled,
+    Finished
+}
+
+
+#[derive(Clone, Debug)]
 pub struct Thread {
     tid: u64,
     pc: u64,
+    pub state: ThreadState,
+    pub prev_accesses: Option<Vec<Access>>,
     pub stack: Stack,
 }
 
@@ -111,6 +127,7 @@ pub struct State {
 
     // logger and other (non-functional) metrics
     pub logger: Logger,
+    path: Vec<(u64, u64)>,
     path_length: u64,
     path_id: u64,
 }
@@ -119,16 +136,17 @@ impl Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("State")
             .field("pc", &self.threads[&self.active_thread].pc)
-            // .field("stack", &self.stack)
+            .field("active_thread", &self.active_thread)
+            .field("threads", &self.threads)
             // .field("heap", &self.heap)
             // .field("precondition", &self.precondition)
             // .field("constraints", &self.constraints)
             // .field("alias_map", &self.alias_map)
             // .field("ref_counter", &self.ref_counter)
             // .field("exception_handler", &self.exception_handler)
-            // .field("logger", &self.logger)
-            // .field("path_length", &self.path_length)
-            // .field("path_id", &self.path_id)
+            .field("logger", &self.logger)
+            .field("path_length", &self.path_length)
+            .field("path_id", &self.path_id)
             .finish()
     }
 }
@@ -1775,6 +1793,8 @@ pub fn verify(
     let thread: Thread = Thread {
         tid: 0,
         pc,
+        state: ThreadState::Enabled,
+        prev_accesses: None,
         stack: Stack::new(vector![StackFrame {
             return_pc: pc,
             returning_lhs: None,
@@ -1786,13 +1806,14 @@ pub fn verify(
     let state = State {
         active_thread: 0,
         threads: HashMap::from([(0, thread)]),
-        thread_counter: IdCounter::new(1),
+        thread_counter: IdCounter::new(0),
         heap: ImHashMap::new(),
         constraints,
         alias_map: ImHashMap::new(),
         ref_counter: IdCounter::new(0),
         exception_handler: Default::default(),
         path_length: 0,
+        path: vec![],
         logger: root_logger.new(o!("pathId" => 0)),
         path_id: 0,
     };

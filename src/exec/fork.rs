@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use im_rc::vector;
 use slog::info;
 
-use crate::{exec::{constants, find_entry_for_static_invocation, Thread}, stack::{Stack, StackFrame}, typeable::runtime_to_nonvoidtype, Declaration, Expression, Identifier, Invocation, Method, Parameter, RuntimeType};
+use crate::{exec::{constants, find_entry_for_static_invocation, Thread, ThreadState}, stack::{Stack, StackFrame}, typeable::runtime_to_nonvoidtype, Declaration, Expression, Identifier, Invocation, Method, Parameter, RuntimeType};
 
 use super::{eval::evaluate, invocation::InvocationContext, Engine, State};
 
@@ -57,6 +57,8 @@ pub(super) fn fork_invocation(
     let thread: Thread = Thread {
         tid,
         pc: next_entry,
+        state: ThreadState::Enabled,
+        prev_accesses: None,
         stack: Stack::new(vector![StackFrame {
             return_pc: next_entry,
             returning_lhs: None,

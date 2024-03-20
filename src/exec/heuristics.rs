@@ -5,7 +5,7 @@ use itertools::Itertools;
 use slog::{o, Logger};
 
 use crate::{
-    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, Thread}, positioned::SourcePos, stack::{Stack, StackFrame}, statistics::Statistics, symbol_table::SymbolTable, Options
+    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, Thread, ThreadState}, positioned::SourcePos, stack::{Stack, StackFrame}, statistics::Statistics, symbol_table::SymbolTable, Options
 };
 
 use execution_tree::ExecutionTree;
@@ -52,8 +52,30 @@ fn execute_instruction_for_all_states(
     //     &remaining_states.len()
     // );
 
-    while let Some(mut state) = remaining_states.pop() {
-        debug_assert!(remaining_states.iter().map(|s| s.threads[&s.active_thread].pc).all_equal());
+    // MPOR to check if remaining states are valid 
+    // Transition Between Threads
+
+    let mut scheduled_states = vec![];
+    for state in remaining_states.iter_mut() {
+        if let Some((_, pc)) = state.path.last() {
+            if !validate_quasi_monotonicity(state, program[pc].clone()) {
+                continue;
+            }
+        }
+        
+        for thread in state.threads.values() {
+            if thread.state != ThreadState::Enabled {continue;}
+            let mut new_state = state.clone();
+            new_state.active_thread = thread.tid;
+            scheduled_states.push(new_state);
+        }
+    }
+
+    // let mut scheduled_states = remaining_states;
+
+    while let Some(mut state) = scheduled_states.pop() {
+        state.path.push((state.active_thread, state.threads[&state.active_thread].pc));
+        // debug_assert!(scheduled_states.iter().map(|s| s.threads[&s.active_thread].pc).all_equal());
 
         // dbg!(&remaining_states.len());
         if state.path_length >= options.k
@@ -61,6 +83,7 @@ fn execute_instruction_for_all_states(
         {
             // finishing current branch
             statistics.measure_finish();
+            state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
             continue;
         }
 
@@ -68,7 +91,7 @@ fn execute_instruction_for_all_states(
             &mut state,
             program,
             &mut crate::exec::EngineContext {
-                remaining_states: &mut remaining_states,
+                remaining_states: &mut scheduled_states,
                 path_counter: path_counter.clone(),
                 statistics,
                 st,
@@ -76,76 +99,74 @@ fn execute_instruction_for_all_states(
                 options,
             },
         );
-        for key in state.threads.keys() {
-            let mut trans_state = state.clone();
-            trans_state.active_thread = *key;
-            match next {
-                ActionResult::FunctionCall(next) => {
-                    // function call or return
-                    let thread = trans_state.threads.get_mut(&trans_state.active_thread).unwrap();
-                    thread.pc = next;
-                    resulting_states.entry(thread.pc).or_default().push(trans_state);
-                },
-                ActionResult::Return(return_pc) => {
-                    if let Some(neighbours) = flows.get(&return_pc) {
-                        // A return statement always connects to one
-                        debug_assert!(neighbours.len() == 1);
-                        let mut neighbours = neighbours.iter();
-                        let first_neighbour = neighbours.next().unwrap();
-                        let thread = trans_state.threads.get_mut(&trans_state.active_thread).unwrap();
-                        thread.pc = *first_neighbour;
+        
+        match next {
+            ActionResult::FunctionCall(next) => {
+                // function call or return
+                let thread = state.threads.get_mut(&state.active_thread).unwrap();
+                thread.pc = next;
+                resulting_states.entry(thread.pc).or_default().push(state);
+            },
+            ActionResult::Return(return_pc) => {
+                if let Some(neighbours) = flows.get(&return_pc) {
+                    // A return statement always connects to one
+                    debug_assert!(neighbours.len() == 1);
+                    let mut neighbours = neighbours.iter();
+                    let first_neighbour = neighbours.next().unwrap();
+                    let thread = state.threads.get_mut(&state.active_thread).unwrap();
+                    thread.pc = *first_neighbour;
 
-                        resulting_states.entry(thread.pc).or_default().push(trans_state);
+                    resulting_states.entry(thread.pc).or_default().push(state);
+                } else {
+                    panic!("function pc does not exist");
+                }
+            }
+            ActionResult::Continue => {
+                if let Some(neighbours) = flows.get(&state.threads.get_mut(&state.active_thread).unwrap().pc) {
+                    //dbg!(&neighbours);
+                    statistics.measure_branches((neighbours.len() - 1) as u32);
+
+                    let mut neighbours = neighbours.iter();
+                    let first_neighbour = neighbours.next().unwrap();
+                    state.threads.get_mut(&state.active_thread).unwrap().pc = *first_neighbour;
+                    state.path_length += 1;
+
+                    let new_path_ids = (1..).map(|_| path_counter.borrow_mut().next_id());
+                    
+                    for (neighbour_pc, path_id) in neighbours.zip(new_path_ids) {
+                        let mut new_state = state.clone();
+                        new_state.path_id = path_id;
+                        new_state.threads.get_mut(&new_state.active_thread).unwrap().pc = *neighbour_pc;
+                        new_state.logger = root_logger.new(o!("path_id" => path_id));
+
+                        resulting_states
+                            .entry(new_state.threads.get_mut(&new_state.active_thread).unwrap().pc)
+                            .or_default()
+                            .push(new_state);
+                    }
+                    resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+                } else {
+                    // Function exit of the main function under verification
+                    if let CFGStatement::FunctionExit { .. } = &program[&state.threads.get_mut(&state.active_thread).unwrap().pc] {
+                        // Valid program exit, continue
+                        statistics.measure_finish();
                     } else {
-                        panic!("function pc does not exist");
+                        panic!("Unexpected end of CFG");
                     }
                 }
-                ActionResult::Continue => {
-                    if let Some(neighbours) = flows.get(&trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc) {
-                        //dbg!(&neighbours);
-                        statistics.measure_branches((neighbours.len() - 1) as u32);
-
-                        let mut neighbours = neighbours.iter();
-                        let first_neighbour = neighbours.next().unwrap();
-                        trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc = *first_neighbour;
-                        trans_state.path_length += 1;
-
-                        let new_path_ids = (1..).map(|_| path_counter.borrow_mut().next_id());
-
-                        for (neighbour_pc, path_id) in neighbours.zip(new_path_ids) {
-                            let mut new_state = trans_state.clone();
-                            new_state.path_id = path_id;
-                            new_state.threads.get_mut(&new_state.active_thread).unwrap().pc = *neighbour_pc;
-                            new_state.logger = root_logger.new(o!("path_id" => path_id));
-
-                            resulting_states
-                                .entry(new_state.threads.get_mut(&new_state.active_thread).unwrap().pc)
-                                .or_default()
-                                .push(new_state);
-                        }
-                        resulting_states.entry(trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc).or_default().push(trans_state);
-                    } else {
-                        // Function exit of the main function under verification
-                        if let CFGStatement::FunctionExit { .. } = &program[&trans_state.threads.get_mut(&trans_state.active_thread).unwrap().pc] {
-                            // Valid program exit, continue
-                            statistics.measure_finish();
-                        } else {
-                            panic!("Unexpected end of CFG");
-                        }
-                    }
-                }
-                ActionResult::InvalidAssertion(info) => {
-                    return Err(info);
-                },
-                ActionResult::InvalidFork(info) => {
-                    return Err(info);
-                }
-                ActionResult::InfeasiblePath => {
-                    statistics.measure_prune();
-                }
-                ActionResult::Finish => {
-                    statistics.measure_finish();
-                }
+            }
+            ActionResult::InvalidAssertion(info) => {
+                return Err(info);
+            },
+            ActionResult::InvalidFork(info) => {
+                return Err(info);
+            }
+            ActionResult::InfeasiblePath => {
+                statistics.measure_prune();
+            }
+            ActionResult::Finish => {
+                statistics.measure_finish();
+                state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
             }
         }
     }
@@ -153,14 +174,6 @@ fn execute_instruction_for_all_states(
     // if resulting_states.is_empty() {
     //     dbg!(&program[&current_pc.unwrap()]);
     // }
-
-    for (pc, states) in resulting_states.clone() {
-        let filtered_states: Vec<State> = states
-            .into_iter()
-            .filter(|s| validate_quasi_monotonicity(s.clone(), program[&s.threads[&s.active_thread].pc].clone()))
-            .collect();
-        resulting_states.insert(pc, filtered_states);
-    }
 
     // Finished
     Ok(resulting_states)

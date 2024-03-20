@@ -1,16 +1,17 @@
 class Foo {
     int x;
+    int y;
 
-    static void f(Foo foo) {
-        foo.x := 5;
-        fork foo.incr();
-        int x := foo.x;
+    static void f(Foo main) {
+        main.x := 5;
+        fork main.bar();
+        int x := main.x;
         assert(x == 5);
     }
 
-    void incr() {
-        int y := this.x;
-        y := y + 0;
-        this.x := y;
+    void bar() {
+        while(1 < 2) {
+            this.x := 5;
+        }
     }
 }
