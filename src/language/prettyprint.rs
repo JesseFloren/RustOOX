@@ -429,6 +429,21 @@ impl<'a, D: DocAllocator<'a>> pretty::Pretty<'a, D> for &Statement {
                 invocation.pretty(allocator),
                 semicolon()
             ],
+            Statement::Lock { identifier, .. } => docs![
+                allocator,
+                "lock",
+                " ",
+                identifier.to_string(),
+                semicolon()
+            ],
+            Statement::Unlock { identifier, .. } => docs![
+                allocator,
+                "unlock",
+                " ",
+                identifier.to_string(),
+                semicolon()
+            ],
+            Statement::Join {..} => allocator.text("join;"),
             Statement::Skip => allocator.text(";"),
             Statement::Assert { assertion, .. } => docs![
                 allocator,

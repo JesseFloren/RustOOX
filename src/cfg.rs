@@ -325,6 +325,9 @@ fn init((l, stmt): &(u64, CFGStatement)) -> u64 {
         CFGStatement::Statement(Statement::Assign { .. }) => l,
         CFGStatement::Statement(Statement::Call { .. }) => l,
         CFGStatement::Statement(Statement::Fork { .. }) => l,
+        CFGStatement::Statement(Statement::Lock { .. }) => l,
+        CFGStatement::Statement(Statement::Unlock { .. }) => l,
+        CFGStatement::Statement(Statement::Join { .. }) => l,
         CFGStatement::Statement(Statement::Skip { .. }) => l,
         CFGStatement::Statement(Statement::Assert { .. }) => l,
         CFGStatement::Statement(Statement::Assume { .. }) => l,
@@ -422,7 +425,10 @@ fn r#final((l, stmt): &(u64, CFGStatement), all_smts: &Vec<(u64, CFGStatement)>)
         CFGStatement::Statement(Statement::Assign { .. }) => vec![*l], //note
         CFGStatement::Statement(Statement::Call { .. }) => vec![*l],   //note
         CFGStatement::Statement(Statement::Fork { .. }) => vec![*l],   //note
+        CFGStatement::Statement(Statement::Lock { .. }) => vec![*l],   //note
+        CFGStatement::Statement(Statement::Unlock { .. }) => vec![*l],   //note
         CFGStatement::Statement(Statement::Skip { .. }) => vec![*l],
+        CFGStatement::Statement(Statement::Join { .. }) => vec![*l],
         CFGStatement::Statement(Statement::Assert { .. }) => vec![*l],
         CFGStatement::Statement(Statement::Assume { .. }) => vec![*l],
         CFGStatement::Statement(Statement::Continue { .. }) => Vec::new(),
@@ -502,6 +508,9 @@ fn flow((l, stmt): &(u64, CFGStatement), all_smts: &Vec<(u64, CFGStatement)>) ->
         CFGStatement::Statement(Statement::Assign { .. }) => Vec::new(), // to be fixed?
         CFGStatement::Statement(Statement::Call { .. }) => Vec::new(),   // to be fixed?
         CFGStatement::Statement(Statement::Fork { .. }) => Vec::new(),   // to be fixed?
+        CFGStatement::Statement(Statement::Lock { .. }) => Vec::new(),   // to be fixed?
+        CFGStatement::Statement(Statement::Unlock { .. }) => Vec::new(),   // to be fixed?
+        CFGStatement::Statement(Statement::Join { .. }) => Vec::new(),
         CFGStatement::Statement(Statement::Skip { .. }) => Vec::new(),
         CFGStatement::Statement(Statement::Assert { .. }) => Vec::new(),
         CFGStatement::Statement(Statement::Assume { .. }) => Vec::new(),

@@ -1,17 +1,20 @@
 class Foo {
-    int x;
-    int y;
-
-    static void f(Foo main) {
-        main.x := 5;
-        fork main.bar();
-        int x := main.x;
-        assert(x == 5);
+    static void f(int[] a, int k)
+        requires(a != null && #a > 1 && #a < 10 &&  0 <= k && k < #a && (forall elem, index : a : elem > 0))
+    {
+        fork Foo.b(a, k - 3);
+        fork Foo.c(a, k + 3);
+        int value := a[k];
+        assert(value > 1);
     }
 
-    void bar() {
-        while(1 < 2) {
-            this.x := 5;
-        }
+    static void b(int[] a, int k) {
+        a[k + 3] := 2;
+
     }
+
+    static void c(int[] a, int k) {
+        a[k - 3] := 2;
+    }
+
 }

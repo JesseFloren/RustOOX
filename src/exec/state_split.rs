@@ -2,7 +2,7 @@
 //! This includes conditional state splitting, splitting of state due to different typing of an object,
 //! and array initialisation.
 
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 use itertools::Either;
 use slog::{debug, info};
@@ -59,7 +59,7 @@ pub(super) fn split_states_with_aliases(
     en: &mut impl Engine,
     state: &mut State,
     symbolic_object_ref: Identifier,
-    aliases: HashMap<(Identifier, Identifier), Vec<Rc<Expression>>>,
+    aliases: Vec<Vec<Rc<Expression>>>,
 ) {
     assert!(aliases.len() > 1);
     en.statistics().measure_branches(aliases.len() as u32);
@@ -70,7 +70,7 @@ pub(super) fn split_states_with_aliases(
     );
 
     // Turn it into an iterator over the objects
-    let mut aliases = aliases.into_values();
+    let mut aliases = aliases.into_iter();
 
     let objects = aliases.next().unwrap();
     state

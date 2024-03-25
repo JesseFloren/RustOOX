@@ -53,11 +53,15 @@ pub(super) fn fork_invocation(
         en.symbol_table(),
     ); 
 
+    let mut parents = state.threads[&state.active_thread].parents.clone();
+    parents.push(state.active_thread);
+
     let tid = state.thread_counter.next_id();
     let thread: Thread = Thread {
         tid,
         pc: next_entry,
         state: ThreadState::Enabled,
+        parents,
         prev_accesses: None,
         stack: Stack::new(vector![StackFrame {
             return_pc: next_entry,

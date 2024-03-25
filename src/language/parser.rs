@@ -168,9 +168,23 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
         info: invocation.get_position(),
         invocation,
     });
+
     let fork = (keyword("fork") * invocation() - punct(";")).map(|invocation| Statement::Fork {
         info: invocation.get_position(),
         invocation,
+    });
+    
+    let lock = (punct(">") * identifier() - punct("<") - punct(";")).map(|identifier| Statement::Lock {
+        info: identifier.get_position(),
+        identifier,
+    });
+
+    let unlock = (punct("<") * identifier() - punct(">") - punct(";")).map(|identifier| Statement::Unlock {
+        info: identifier.get_position(),
+        identifier,
+    });
+    let join = (keyword("join") - punct(";")).map(|t| Statement::Join {
+        info: t.get_position(),
     });
     let skip = punct(";").map(|_| Statement::Skip);
     let assert = (keyword("assert") + verification_expression().map(Rc::new) - punct(";")).map(
@@ -240,6 +254,9 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
         | assignment
         | call_
         | fork
+        | lock
+        | unlock
+        | join
         | skip
         | assert
         | assume

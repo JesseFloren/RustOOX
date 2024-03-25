@@ -243,6 +243,19 @@ pub enum Statement {
         #[derivative(PartialEq = "ignore")]
         info: SourcePos,
     },
+    Lock {
+        identifier: Identifier,
+        #[derivative(PartialEq = "ignore")]
+        info: SourcePos,
+    },
+    Unlock {
+        identifier: Identifier,
+        #[derivative(PartialEq = "ignore")]
+        info: SourcePos,
+    },
+    Join {
+        info: SourcePos
+    },
     Skip,
     Assert {
         assertion: Rc<Expression>,

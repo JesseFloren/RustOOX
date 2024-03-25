@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet}, ops::AddAssign, rc::Rc, vec};
+use std::{cell::RefCell, collections::{HashMap, HashSet, VecDeque}, ops::AddAssign, rc::Rc, sync::LockResult, vec};
 
 use clap::ValueEnum;
 use im_rc::{vector, HashMap as ImHashMap, HashSet as ImHashSet};
@@ -18,6 +18,7 @@ mod heuristics;
 mod invocation;
 mod fork;
 mod mpor;
+mod locks;
 mod state_split;
 
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
     dsl::{and, equal, ite, negate, to_int_expr},
     exception_handler::{ExceptionHandlerEntry, ExceptionHandlerStack},
     exec::{
-        eval::{evaluate, evaluate_as_int}, fork::fork_invocation, invocation::InvocationContext
+        eval::{evaluate, evaluate_as_int}, fork::fork_invocation, invocation::InvocationContext, mpor::get_heap_ref, state_split::split_states_with_aliases
     },
     insert_exceptional_clauses, language, parse_program,
     positioned::{SourcePos, WithPosition},
@@ -91,6 +92,11 @@ where
 pub enum Access {
     FieldWrite(HashSet<Reference>, Identifier),
     FieldRead(HashSet<Reference>, Identifier), 
+    ElemWrite(HashSet<Reference>, Rc<Expression>),
+    ElemRead(HashSet<Reference>, Rc<Expression>),
+    LockAction(HashSet<Reference>),
+    FinishedThread(Vec<u64>),
+    Join(u64)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,12 +106,12 @@ pub enum ThreadState {
     Finished
 }
 
-
 #[derive(Clone, Debug)]
 pub struct Thread {
     tid: u64,
     pc: u64,
     pub state: ThreadState,
+    pub parents: Vec<u64>,
     pub prev_accesses: Option<Vec<Access>>,
     pub stack: Stack,
 }
@@ -117,6 +123,7 @@ pub struct State {
     pub active_thread: u64,
     pub threads: HashMap<u64, Thread>,
     pub thread_counter: IdCounter<u64>,
+    pub lock_requests: HashMap<Reference, VecDeque<u64>>,
 
     pub heap: Heap,
 
@@ -780,7 +787,6 @@ fn exec_fork(
                 debug!(state.logger, "only one potential method, resolved");
                 let (_, potential_method) = &potential_methods.iter().next().unwrap();
                 fork_invocation(state, context, potential_method, en);
-                println!("Found Fork");
                 ActionResult::Continue
             } else {
                 error!(state.logger, "Foxrk can only have a Single possible method invocation");
@@ -1794,6 +1800,7 @@ pub fn verify(
         tid: 0,
         pc,
         state: ThreadState::Enabled,
+        parents: vec![],
         prev_accesses: None,
         stack: Stack::new(vector![StackFrame {
             return_pc: pc,
@@ -1807,6 +1814,7 @@ pub fn verify(
         active_thread: 0,
         threads: HashMap::from([(0, thread)]),
         thread_counter: IdCounter::new(0),
+        lock_requests: HashMap::new(),
         heap: ImHashMap::new(),
         constraints,
         alias_map: ImHashMap::new(),

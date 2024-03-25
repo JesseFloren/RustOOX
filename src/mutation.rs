@@ -787,6 +787,9 @@ fn mutate_body(
             let stats = apply_stat(mutation, statement.clone());
             mutated_invocations.chain(stats).collect()
         },
+        Statement::Lock { .. } => apply_stat(mutation, statement.clone()),
+        Statement::Unlock { .. } => apply_stat(mutation, statement.clone()),
+        Statement::Join {..} => apply_stat(mutation, statement.clone()),
         Statement::Skip => apply_stat(mutation, statement.clone()),
         Statement::Assert {
             assertion: _assertion,
@@ -865,7 +868,10 @@ fn deletable_stat(statement: &Statement) -> bool {
         Statement::Declare { .. } => false,
         Statement::Assign { .. } => true,
         Statement::Call { .. } => true,
-        Statement::Fork { .. } => true,
+        Statement::Fork { .. } => false,
+        Statement::Lock { .. } => false,
+        Statement::Unlock { .. } => false,
+        Statement::Join { .. } => false,
         Statement::Skip { .. } => false,
         Statement::Assert { .. } => false,
         Statement::Assume { .. } => false,

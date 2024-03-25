@@ -178,7 +178,7 @@ pub(super) fn multiple_method_invocation(
 
                 // We need to split states such that each resulting path has a single type for the object in the alias map.
                 let symbolic_object_ref = var.clone();
-                split_states_with_aliases(en, state, symbolic_object_ref, resulting_alias);
+                split_states_with_aliases(en, state, symbolic_object_ref, resulting_alias.into_values().collect_vec());
                 // Try again with updated states.
                 multiple_method_invocation(state, invocation_lhs, context, potential_methods, en)
             }

@@ -222,7 +222,6 @@ fn type_specification(
         let method_type = declaration_member.type_of();
         if !method_type.is_of_type(RuntimeType::VoidRuntimeType, st) {
             let mut env = env.clone();
-
             env.declare_var(retval(), method_type)?;
             let ensures = type_expression(ensures, &mut env, st)?;
             matches_type(ensures.as_ref(), RuntimeType::BoolRuntimeType, st)?;
@@ -292,8 +291,24 @@ fn type_statement(
             },
             Statement::Fork { invocation, info } => {
                 let invocation = type_invocation(invocation, env, st, declaration)?;
+                matches_type(invocation.clone(), RuntimeType::VoidRuntimeType, st)?;
                 statements.push(Statement::Fork { invocation, info });
             },
+            Statement::Lock { identifier, info } => {
+                let var_type = env.get_var_type(&identifier)?;
+                var_type.get_reference_type().ok_or_else(|| {
+                    error::unification_error(RuntimeType::REFRuntimeType, var_type.clone(), info)
+                })?;
+                statements.push(Statement::Lock { identifier, info })
+            },
+            Statement::Unlock { identifier, info } => {
+                let var_type = env.get_var_type(&identifier)?;
+                var_type.get_reference_type().ok_or_else(|| {
+                    error::unification_error(RuntimeType::REFRuntimeType, var_type.clone(), info)
+                })?;
+                statements.push(Statement::Unlock { identifier, info })
+            },
+            Statement::Join {info} => statements.push(Statement::Join {info}),
             Statement::Skip => statements.push(Statement::Skip),
             Statement::Assert { assertion, info } => {
                 let assertion = type_expression(assertion.into(), env, st)?;

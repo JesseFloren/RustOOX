@@ -1,10 +1,11 @@
 use std::{cell::RefCell, collections::HashMap, ops::DerefMut, rc::Rc};
 
 
+use itertools::Itertools;
 use slog::{o, Logger};
 
 use crate::{
-    cfg::CFGStatement, exec::{action, mpor::validate_quasi_monotonicity, ActionResult, ThreadState}, positioned::SourcePos, statistics::Statistics, symbol_table::SymbolTable, Options
+    cfg::CFGStatement, exec::{action, locks::{check_deadlock, update_joins, update_next_locks}, mpor::validate_quasi_monotonicity, ActionResult, ThreadState}, positioned::SourcePos, statistics::Statistics, symbol_table::SymbolTable, Options, Statement
 };
 
 use execution_tree::ExecutionTree;
@@ -56,18 +57,42 @@ fn execute_instruction_for_all_states(
 
     let mut scheduled_states = vec![];
     for state in remaining_states.iter_mut() {
+
+        //MPOR
         if let Some((_, pc)) = state.path.last() {
-            if !validate_quasi_monotonicity(state, program[pc].clone()) {
+            if  !validate_quasi_monotonicity(
+                    state, 
+                    program[pc].clone(), 
+                    &mut crate::exec::EngineContext {
+                    remaining_states: &mut scheduled_states,
+                    path_counter: path_counter.clone(),
+                    statistics,
+                    st,
+                    root_logger: &root_logger,
+                    options,
+                }
+            ) {
                 continue;
             }
-        }
-        
+        }        
+
+        update_next_locks(state, &program[&state.threads[&state.active_thread].pc]);
+        update_joins(state, program);
+        check_deadlock(state);
+
+
+        let mut transition_states = vec![];
         for thread in state.threads.values() {
             if thread.state != ThreadState::Enabled {continue;}
             let mut new_state = state.clone();
-            new_state.active_thread = thread.tid;
-            scheduled_states.push(new_state);
+            new_state.active_thread = thread.tid;     
+            transition_states.push(new_state);
         }
+
+        // if transition_states.len() == 0 {
+        //     println!("{:?}", state.threads.values().map(|t| (t.tid, t.state.clone(), program[&t.pc].clone())).collect_vec());
+        // }
+        scheduled_states.extend(transition_states);
     }
 
     // let mut scheduled_states = remaining_states;
@@ -149,6 +174,8 @@ fn execute_instruction_for_all_states(
                     if let CFGStatement::FunctionExit { .. } = &program[&state.threads.get_mut(&state.active_thread).unwrap().pc] {
                         // Valid program exit, continue
                         statistics.measure_finish();
+                        state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
+                        resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
                     } else {
                         panic!("Unexpected end of CFG");
                     }
@@ -166,6 +193,7 @@ fn execute_instruction_for_all_states(
             ActionResult::Finish => {
                 statistics.measure_finish();
                 state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
+                resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
             }
         }
     }
@@ -177,6 +205,8 @@ fn execute_instruction_for_all_states(
     // Finished
     Ok(resulting_states)
 }
+
+
 
 /// Marks a path as finished in the path tree. (only if there are no valid states left for that path)
 /// It will move up tree through its parent, removing the finished state from the list of child states.
