@@ -1,0 +1,50 @@
+class Mutex {
+    Mutex() {}
+}
+
+class Fork {
+    Fork() {}
+}
+
+class Philosopher {
+    bool eaten;
+    Philosopher() {
+        this.eaten := false;
+    }
+
+    void run(Mutex mutex, Fork left, Fork right) {
+        >mutex<;
+
+        >left<;
+        >right<;
+
+        <mutex>;
+
+        this.eaten := true;
+
+        <left>;
+        <right>;
+
+    }
+
+    static void Main() 
+    {
+        Mutex mutex := new Mutex();
+
+        Fork f1 := new Fork();
+        Fork f2 := new Fork();
+
+        Philosopher p1 := new Philosopher();
+        Philosopher p2 := new Philosopher();
+
+        fork p1.run(mutex, f1, f2);
+        fork p2.run(mutex, f2, f1);
+
+        join;
+
+        bool e1 := p1.eaten;
+        bool e2 := p2.eaten;
+
+        assert (e1 && e2);
+    }
+}

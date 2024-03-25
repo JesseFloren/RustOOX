@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet, VecDeque}, ops::AddAssign, rc::Rc, sync::LockResult, vec};
+use std::{cell::RefCell, collections::{HashMap, HashSet, VecDeque}, ops::AddAssign, rc::Rc, vec};
 
 use clap::ValueEnum;
 use im_rc::{vector, HashMap as ImHashMap, HashSet as ImHashSet};
@@ -27,7 +27,7 @@ use crate::{
     dsl::{and, equal, ite, negate, to_int_expr},
     exception_handler::{ExceptionHandlerEntry, ExceptionHandlerStack},
     exec::{
-        eval::{evaluate, evaluate_as_int}, fork::fork_invocation, invocation::InvocationContext, mpor::get_heap_ref, state_split::split_states_with_aliases
+        eval::{evaluate, evaluate_as_int}, fork::fork_invocation, invocation::InvocationContext
     },
     insert_exceptional_clauses, language, parse_program,
     positioned::{SourcePos, WithPosition},
@@ -1728,6 +1728,7 @@ pub fn verify(
 
     let program = result.into_iter().collect();
 
+    println!("{:?}", program);
     // dbg!(&program);
 
     let flows: HashMap<u64, Vec<u64>> = utils::group_by(flw.into_iter());

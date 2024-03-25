@@ -72,8 +72,10 @@ fn lock_ref(
     if let Some(_) = state.lock_requests.get(ref_) {
         state.lock_requests.get_mut(ref_).unwrap().push_back(state.active_thread);
         state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Disabled;
+        println!("Thread {}, aquires lock: {}", state.active_thread, ref_)
     } else {
         state.lock_requests.insert(*ref_, VecDeque::new());
+        println!("Thread {}, requests lock: {}", state.active_thread, ref_)
     }
 }
 
