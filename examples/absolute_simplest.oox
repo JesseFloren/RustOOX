@@ -4,6 +4,7 @@ class Foo {
     {
         fork Foo.b(a, k - 3);
         fork Foo.c(a, k + 3);
+        join;
         int value := a[k];
         assert(value > 1);
     }

@@ -18,6 +18,7 @@ mod heuristics;
 mod invocation;
 mod fork;
 mod mpor;
+mod eval_reference;
 mod locks;
 mod state_split;
 
@@ -789,7 +790,7 @@ fn exec_fork(
                 fork_invocation(state, context, potential_method, en);
                 ActionResult::Continue
             } else {
-                error!(state.logger, "Foxrk can only have a Single possible method invocation");
+                error!(state.logger, "Fork can only have a Single possible method invocation");
                 ActionResult::InvalidFork(*info)
             }
             

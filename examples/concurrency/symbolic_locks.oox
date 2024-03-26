@@ -1,0 +1,13 @@
+class Lock {
+    Lock() {}
+}
+
+class Foo {
+    static void f(Lock l, Lock k) {
+        Lock j := new Lock();
+        >l<;
+        >j<;
+        >k<;
+        <l>;
+    }
+}

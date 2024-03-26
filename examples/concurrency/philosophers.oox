@@ -33,18 +33,30 @@ class Philosopher {
 
         Fork f1 := new Fork();
         Fork f2 := new Fork();
+        Fork f3 := new Fork();
+        Fork f4 := new Fork();
+        Fork f5 := new Fork();
+
 
         Philosopher p1 := new Philosopher();
         Philosopher p2 := new Philosopher();
+        Philosopher p3 := new Philosopher(); 
+        Philosopher p4 := new Philosopher(); 
+
 
         fork p1.run(mutex, f1, f2);
-        fork p2.run(mutex, f2, f1);
+        fork p2.run(mutex, f2, f3);
+        fork p3.run(mutex, f3, f4);
+        fork p4.run(mutex, f4, f1);
 
         join;
 
         bool e1 := p1.eaten;
         bool e2 := p2.eaten;
+        bool e3 := p3.eaten;
+        bool e4 := p4.eaten;
 
-        assert (e1 && e2);
+
+        assert (e1 && e2 && e3 && e4);
     }
 }

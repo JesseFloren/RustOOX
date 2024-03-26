@@ -57,25 +57,26 @@ fn execute_instruction_for_all_states(
     let mut scheduled_states = vec![];
     for state in remaining_states.iter_mut() {
 
+        let engine = &mut crate::exec::EngineContext {
+            remaining_states: &mut scheduled_states,
+            path_counter: path_counter.clone(),
+            statistics,
+            st,
+            root_logger: &root_logger,
+            options,
+        };
         //MPOR
         if let Some((_, pc)) = state.path.last() {
             if  !validate_quasi_monotonicity(
                     state, 
                     program[pc].clone(), 
-                    &mut crate::exec::EngineContext {
-                    remaining_states: &mut scheduled_states,
-                    path_counter: path_counter.clone(),
-                    statistics,
-                    st,
-                    root_logger: &root_logger,
-                    options,
-                }
+                    engine
             ) {
                 continue;
             }
         }        
 
-        update_next_locks(state, &program[&state.threads[&state.active_thread].pc]);
+        update_next_locks(state, &program[&state.threads[&state.active_thread].pc], engine);
         update_joins(state, program);
         check_deadlock(state);
 
