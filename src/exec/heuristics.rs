@@ -194,6 +194,10 @@ fn execute_instruction_for_all_states(
                 statistics.measure_finish();
                 state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
                 resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+            },
+            ActionResult::Excepted => {
+                statistics.measure_finish();
+                state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Excepted;
             }
         }
     }

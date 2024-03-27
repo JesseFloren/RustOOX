@@ -1,4 +1,4 @@
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct ExceptionHandlerStack {
     stack: Vec<ExceptionHandlerEntry>,
 }
@@ -30,7 +30,7 @@ impl ExceptionHandlerStack {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ExceptionHandlerEntry {
     /// the program counter of the catch statement to return to when an exception is thrown.
     pub catch_pc: u64,

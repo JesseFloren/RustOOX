@@ -63,6 +63,7 @@ pub(super) fn fork_invocation(
         state: ThreadState::Enabled,
         parents,
         prev_accesses: None,
+        exception_handler: Default::default(),
         stack: Stack::new(vector![StackFrame {
             return_pc: next_entry,
             returning_lhs: None,

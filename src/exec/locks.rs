@@ -34,7 +34,9 @@ impl ExecRef for ExecUnlock {
 pub(super) fn check_deadlock(
     state: &State
 ) {
-    if !state.threads.values().any(|t| t.state == ThreadState::Enabled) && !(state.threads[&0].state == ThreadState::Finished) { 
+    if !state.threads.values().any(|t| t.state == ThreadState::Enabled) 
+    && !(state.threads[&0].state == ThreadState::Finished) 
+    && !state.threads.values().any(|t| t.state == ThreadState::Excepted) { 
         println!("{:?}", state.threads.values().map(|t| (t.tid, t.state.clone())).collect_vec());
         println!("{:?}", state.path);
         unreachable!("DEADLOCK");

@@ -4,16 +4,19 @@ class Array {
 
     static void incr(int[] a, int k, Array l) {
         >l<;
-        a[k] := 20;
+        int x := a[k];
+        a[k] := x * 2;
         <l>;
     }
 
     static void Main(int[] a) 
         requires(a != null && #a > 1 && #a < 10 &&  (forall elem, index : a : elem > 0)) 
     {
-        int k := 0;
+        int k := 11;
 
         Array l := new Array();
+
+        a[k] := 5;
 
         fork Array.incr(a, k, l);
         fork Array.incr(a, k, l);
@@ -48,15 +51,4 @@ class Foo {
         int x := a[k - 3];
         a[k - 3] := x / 2;
     }
-
-    static void test() {
-        int x := 0;
-        try {
-            throw "Error";
-        } catch {
-            x := 10;
-        }
-        assert x == 10;
-    }
-
 }

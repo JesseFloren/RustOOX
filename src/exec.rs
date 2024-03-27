@@ -104,7 +104,8 @@ pub enum Access {
 pub enum ThreadState {
     Enabled,
     Disabled,
-    Finished
+    Finished,
+    Excepted
 }
 
 #[derive(Clone, Debug)]
@@ -115,6 +116,7 @@ pub struct Thread {
     pub parents: Vec<u64>,
     pub prev_accesses: Option<Vec<Access>>,
     pub stack: Stack,
+    exception_handler: ExceptionHandlerStack
 }
 
 /// The state of a path.
@@ -131,7 +133,6 @@ pub struct State {
     constraints: PathConstraints,
     pub alias_map: AliasMap,
     pub ref_counter: IdCounter<i64>,
-    exception_handler: ExceptionHandlerStack,
 
     // logger and other (non-functional) metrics
     pub logger: Logger,
@@ -282,6 +283,7 @@ enum ActionResult {
     InvalidAssertion(SourcePos),
     InfeasiblePath,
     Finish,
+    Excepted
 }
 
 /// Execute one statement for one state
@@ -402,9 +404,10 @@ fn action(
             ActionResult::Continue
         }
         CFGStatement::FunctionExit { .. } => {
-            state.exception_handler.decrement_handler();
+            let thread = state.threads.get_mut(&state.active_thread).unwrap();
+            thread.exception_handler.decrement_handler();
 
-            let StackFrame { current_member, .. } = state.threads.get_mut(&state.active_thread).unwrap().stack.current_stackframe().unwrap();
+            let StackFrame { current_member, .. } = thread.stack.current_stackframe().unwrap();
             if let Some((post_condition, type_guard)) = current_member.post_condition() {
                 let expression = prepare_assert_expression(state, post_condition.clone(), en);
                 let is_valid = eval_assertion(state, expression, en);
@@ -465,14 +468,14 @@ fn action(
         ),
         CFGStatement::Statement(Statement::Throw { message, .. }) => exec_throw(state, en, message),
         CFGStatement::TryCatch(_, _, catch_entry_pc, _) => {
-            state
+            state.threads.get_mut(&state.active_thread).unwrap()
                 .exception_handler
                 .insert_handler(ExceptionHandlerEntry::new(*catch_entry_pc));
             ActionResult::Continue
         }
         CFGStatement::TryEntry(_) => ActionResult::Continue,
         CFGStatement::TryExit => {
-            state.exception_handler.remove_last_handler();
+            state.threads.get_mut(&state.active_thread).unwrap().exception_handler.remove_last_handler();
             ActionResult::Continue
         }
         CFGStatement::CatchEntry(_) => ActionResult::Continue,
@@ -486,7 +489,7 @@ fn exec_throw(state: &mut State, en: &mut impl Engine, message: &str) -> ActionR
     if let Some(ExceptionHandlerEntry {
         catch_pc,
         mut current_depth,
-    }) = state.exception_handler.pop_last()
+    }) = state.threads.get_mut(&state.active_thread).unwrap().exception_handler.pop_last()
     {
         // A catch was found, starting from now untill the catch we check any exceptional(..) clauses.
         while current_depth > 0 {
@@ -512,7 +515,7 @@ fn exec_throw(state: &mut State, en: &mut impl Engine, message: &str) -> ActionR
             }
             state.threads.get_mut(&state.active_thread).unwrap().stack.pop();
         }
-        ActionResult::Finish
+        ActionResult::Excepted
     }
 }
 
@@ -654,7 +657,7 @@ fn exec_invocation(
 
     debug!(state.logger, "Invocation"; "invocation" => %context.invocation);
 
-    state.exception_handler.increment_handler();
+    state.threads.get_mut(&state.active_thread).unwrap().exception_handler.increment_handler();
 
     match context.invocation {
         Invocation::InvokeMethod {
@@ -773,8 +776,6 @@ fn exec_fork(
     // dbg!(invocation);
 
     debug!(state.logger, "Invocation"; "invocation" => %context.invocation);
-
-    state.exception_handler.increment_handler();
 
     match context.invocation {
         Invocation::InvokeMethod {
@@ -1804,6 +1805,7 @@ pub fn verify(
         state: ThreadState::Enabled,
         parents: vec![],
         prev_accesses: None,
+        exception_handler: Default::default(),
         stack: Stack::new(vector![StackFrame {
             return_pc: pc,
             returning_lhs: None,
@@ -1821,7 +1823,6 @@ pub fn verify(
         constraints,
         alias_map: ImHashMap::new(),
         ref_counter: IdCounter::new(0),
-        exception_handler: Default::default(),
         path_length: 0,
         path: vec![],
         logger: root_logger.new(o!("pathId" => 0)),
