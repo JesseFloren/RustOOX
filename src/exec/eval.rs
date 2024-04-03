@@ -59,8 +59,8 @@ fn eval_locally(
             evaluate_unop(un_op.clone(), value)
         }
         Expression::Var { var, .. } => {
-            let o = state
-                .threads[&state.active_thread]
+            let thread = state.threads.get_mut(&state.active_thread).unwrap();
+            let o = thread
                 .stack
                 .lookup(var)
                 .unwrap_or_else(|| panic!("infeasible, object does not exist: {:?}", var));

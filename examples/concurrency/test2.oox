@@ -1,0 +1,60 @@
+class Main {
+    static int[] sort(int[] array)
+        requires(!(array == null))
+        ensures(forall v, i : retval : forall w, j : retval : i < j ==> v <= w)
+        exceptional(false)
+    {
+        Main.mergesort(array, 0, #array - 1);
+        return array;
+    }
+
+    static void mergesort(int[] array, int left, int right)
+        exceptional(false)
+    {
+        if (left < right) {
+            int middle := (left + right) / 2;
+            fork Main.mergesort(array, left, middle);
+            Main.mergesort(array, middle + 1, right);
+            join;
+            Main.merge(array, left, middle, right);
+        }
+    }
+
+    static void merge(int[] array, int left, int middle, int right)
+        exceptional(false)
+    {
+        int[] temp := new int[right - left + 1];
+        int i := left;
+        int j := middle + 1;
+        int k := 0;
+        while (i <= middle && j <= right) {
+            int arrayI := array[i];
+            int arrayJ := array[j];
+            if (arrayI <= arrayJ) {
+                temp[k] := array[i];
+                k := k + 1;
+                i := i + 1;
+            } else {
+                temp[k] := array[j];
+                k := k + 1;
+                j := j + 1;
+            }
+        }
+        while (i <= middle) {
+            temp[k] := array[i];
+            k := k + 1;
+            i := i + 1;
+        }
+
+        while (j <= right) {
+            temp[k] := array[j];
+            k := k + 1;
+            j := j + 1;
+        }
+        i := left;
+        while (i <= right) {
+            array[i] := temp[i - left];
+            i := i + 1;
+        }
+    }
+}

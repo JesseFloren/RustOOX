@@ -50,12 +50,10 @@ pub(super) fn update_next_locks(
 ) {
     if let CFGStatement::Statement(Statement::Lock { identifier, .. }) = statement {
         ExecLock::exec(state, identifier, en)
-        // exec_lock(state, identifier)
     }
 
     if let CFGStatement::Statement(Statement::Unlock { identifier, .. }) = statement {
         ExecUnlock::exec(state, identifier, en)
-        // exec_unlock(state, identifier)
     }
 }
 

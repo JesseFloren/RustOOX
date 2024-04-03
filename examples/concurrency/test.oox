@@ -1,0 +1,42 @@
+// Dining philosophers. This version has deadlock, to show
+// that OOX can find it.
+class Main {
+    static void main()
+        exceptional(false)
+    {
+        int n := 4;
+        Fork[] forks := new Fork[n];
+        int i := 0;
+
+        while (i < n) {
+            Fork f := new Fork();
+            forks[i] := f;
+            i := i + 1;
+        }
+
+        i := 0;
+        while (i < n) {
+            Fork left := forks[i];
+            Fork right := forks[(i + 1) % n];
+            fork Main.eat(left, right);
+            i := i + 1;
+        }
+        join;
+    }
+
+    static void eat(Fork left, Fork right)
+    {
+        while (true)
+        {
+            lock left;
+            lock right;
+            
+            unlock right;
+            unlock left;
+        }
+    }
+}
+
+class Fork {
+    Fork() { ; }
+}

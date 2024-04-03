@@ -7,8 +7,11 @@ use crate::{cfg::CFGStatement, exec::ThreadState, stack::Stack, Expression, Iden
 use super::{eval::evaluate, eval_assertion, Access, AliasMap, Engine, State};
 
 
-pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGStatement, en: &mut impl Engine) -> bool {
-    let curr_accesses = get_all_accesses(state, statement.clone(), en);
+pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGStatement, curr_statement: CFGStatement, en: &mut impl Engine) -> bool {
+    let mut curr_accesses = get_all_accesses(state, statement.clone(), en);
+    let lock_accesses = get_lock_accesses(state, curr_statement.clone(), en);
+
+    curr_accesses.extend(lock_accesses);
 
     let mut out: bool = true;
     let mut temp_state = state.clone();
@@ -25,7 +28,7 @@ pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGState
     out
 }
 
-fn get_all_accesses(state: &mut State, statement: CFGStatement, en: &mut impl Engine) -> Vec<Access> {
+pub(super) fn get_all_accesses(state: &mut State, statement: CFGStatement, en: &mut impl Engine) -> Vec<Access> {
     let thread = state.threads[&state.active_thread].clone();
     let alias_map = state.alias_map.clone();
     match statement {
@@ -56,17 +59,12 @@ fn get_all_accesses(state: &mut State, statement: CFGStatement, en: &mut impl En
                         },
                         _ => {}
                     }
-                }
+                },
                 _ => {}
             };
             accesses
         },
-        CFGStatement::Statement(Statement::Lock { identifier, .. }) => {
-            vec![Access::LockAction(get_heap_ref(identifier, thread.stack.clone(), alias_map.clone()))]
-        },
-        CFGStatement::Statement(Statement::Unlock { identifier, .. }) => {
-            vec![Access::LockAction(get_heap_ref(identifier, thread.stack.clone(), alias_map.clone()))]
-        },
+
         CFGStatement::Statement(Statement::Join { .. }) => {
             vec![Access::Join(thread.tid)]
         },
@@ -75,6 +73,20 @@ fn get_all_accesses(state: &mut State, statement: CFGStatement, en: &mut impl En
                 return vec![Access::FinishedThread(thread.parents)];
             }
             vec![]
+        },
+        _ => vec![]
+    }
+}
+
+pub(super) fn get_lock_accesses(state: &mut State, statement: CFGStatement, en: &mut impl Engine) -> Vec<Access> {
+    let thread = state.threads[&state.active_thread].clone();
+    let alias_map = state.alias_map.clone();
+    match statement {
+        CFGStatement::Statement(Statement::Lock { identifier, .. }) => {
+            vec![Access::LockAction(get_heap_ref(identifier, thread.stack.clone(), alias_map.clone()))]
+        },
+        CFGStatement::Statement(Statement::Unlock { identifier, .. }) => {
+            vec![Access::LockAction(get_heap_ref(identifier, thread.stack.clone(), alias_map.clone()))]
         },
         _ => vec![]
     }

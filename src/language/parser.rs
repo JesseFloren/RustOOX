@@ -174,12 +174,12 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
         invocation,
     });
     
-    let lock = (punct(">") * identifier() - punct("<") - punct(";")).map(|identifier| Statement::Lock {
+    let lock = (keyword("lock") * identifier() - punct(";")).map(|identifier| Statement::Lock {
         info: identifier.get_position(),
         identifier,
     });
 
-    let unlock = (punct("<") * identifier() - punct(">") - punct(";")).map(|identifier| Statement::Unlock {
+    let unlock = (keyword("unlock") * identifier() - punct(";")).map(|identifier| Statement::Unlock {
         info: identifier.get_position(),
         identifier,
     });
@@ -250,12 +250,13 @@ pub fn statement<'a>(without_assumptions: bool) -> Parser<'a, Token<'a>, Stateme
         .map(|body| body.unwrap_or(Statement::Skip));
 
     // lock, fork & join are left out
-    let p_statement = declaration
+    let p_statement = 
+        unlock
+        | lock
+        | declaration
         | assignment
         | call_
         | fork
-        | lock
-        | unlock
         | join
         | skip
         | assert

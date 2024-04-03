@@ -57,6 +57,8 @@ fn execute_instruction_for_all_states(
     let mut scheduled_states = vec![];
     for state in remaining_states.iter_mut() {
 
+        
+
         let engine = &mut crate::exec::EngineContext {
             remaining_states: &mut scheduled_states,
             path_counter: path_counter.clone(),
@@ -70,16 +72,16 @@ fn execute_instruction_for_all_states(
             if  !validate_quasi_monotonicity(
                     state, 
                     program[pc].clone(), 
+                    program[&state.threads[&state.active_thread].pc].clone(),
                     engine
             ) {
                 continue;
             }
-        }        
+        }       
 
         update_next_locks(state, &program[&state.threads[&state.active_thread].pc], engine);
         update_joins(state, program);
         check_deadlock(state);
-
 
         let mut transition_states = vec![];
         for thread in state.threads.values() {
@@ -102,7 +104,7 @@ fn execute_instruction_for_all_states(
         // debug_assert!(scheduled_states.iter().map(|s| s.threads[&s.active_thread].pc).all_equal());
 
         // dbg!(&remaining_states.len());
-        if state.path_length >= options.k
+        if state.path.len() >= options.k.try_into().unwrap()
             || statistics.start_time.elapsed().as_secs() >= options.time_budget
         {
             // finishing current branch

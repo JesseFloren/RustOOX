@@ -3,10 +3,8 @@ class Array {
     Array() {}
 
     static void incr(int[] a, int k, Array l) {
-        >l<;
         int x := a[k];
         a[k] := x * 2;
-        <l>;
     }
 
     static void Main(int[] a) 
@@ -28,27 +26,109 @@ class Array {
     }
 }
 
+class Array2 {
+    int x;
+    Array2() {
+        this.x := 5;
+    }
+
+    static void mul2(Array2 l) {
+        int x := l.x;
+        l.x := x + 1;
+        unlock l;
+    }
+
+    static void mul3(Array2 l) {
+        lock l;
+        int x := l.x;
+        l.x := x * 2;
+    }
+
+    static void Main()
+    {
+        Array2 l := new Array2();
+
+        lock l;
+        fork Array2.mul2(l);
+        fork Array2.mul3(l);
+
+        join;
+
+        int x := l.x;
+        assert(x == 12);
+    }
+}
+
 class Foo {
+    Foo() {}
     static void f(int[] a, int k)
         requires(a != null && #a > 1 && #a < 10 &&  0 <= k && k < #a && (forall elem, index : a : elem > 0))
     {
-        fork Foo.b(a, k - 3);
-        fork Foo.c(a, k + 3);
+        a[k] := 10;
+
+        Foo g := new Foo();
+
+
+        fork g.b(a, k - 3);
+        fork g.c(a, k + 3);
 
         join;
 
         int value := a[k];
-        assert(value > 1);
+        assert(value == 10);
     }
 
-    static void b(int[] a, int k) {
+    void b(int[] a, int k) {
+        lock this;
         int x := a[k + 3];
         a[k + 3] := x * 2;
-
+        unlock this;
     }
 
-    static void c(int[] a, int k) {
+    void c(int[] a, int k) {
+        lock this;
         int x := a[k - 3];
         a[k - 3] := x / 2;
+        unlock this;
+    }
+}
+
+class Test {
+    Test() {}
+    static void f(int[] a, int k)
+        requires(a != null && #a > 1 && #a < 10 &&  0 <= k && k < #a && (forall elem, index : a : elem == 1))
+    {
+        a[k] := 10;
+
+        Test g := new Test();
+
+
+        fork g.b(a);
+        fork g.c(a);
+
+        join;
+
+        int value := a[k];
+        assert(value == 13);
+    }
+
+    void b(int[] a) {
+        int i := 0;
+        while (i < #a) {
+            lock this;
+            int x := a[i];
+            a[i] := x + 1;
+            unlock this;
+        }
+    }
+
+    void c(int[] a) {
+        int i := 0;
+        while (i < #a) {
+            lock this;
+            int x := a[i];
+            a[i] := x + 2;
+            unlock this;
+        }
     }
 }

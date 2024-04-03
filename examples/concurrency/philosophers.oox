@@ -13,17 +13,17 @@ class Philosopher {
     }
 
     void run(Mutex mutex, Fork left, Fork right) {
-        >mutex<;
+        lock mutex;
 
-        >left<;
-        >right<;
+        lock left;
+        lock right;
 
-        <mutex>;
+        unlock mutex;
 
         this.eaten := true;
 
-        <left>;
-        <right>;
+        unlock left;
+        unlock right;
 
     }
 
@@ -45,18 +45,14 @@ class Philosopher {
 
 
         fork p1.run(mutex, f1, f2);
-        fork p2.run(mutex, f2, f3);
-        fork p3.run(mutex, f3, f4);
-        fork p4.run(mutex, f4, f1);
+        fork p2.run(mutex, f2, f1);
 
         join;
 
         bool e1 := p1.eaten;
         bool e2 := p2.eaten;
-        bool e3 := p3.eaten;
-        bool e4 := p4.eaten;
 
 
-        assert (e1 && e2 && e3 && e4);
+        assert (e1 && e2);
     }
 }
