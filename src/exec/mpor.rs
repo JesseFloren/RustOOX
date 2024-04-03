@@ -4,10 +4,10 @@ use itertools::Itertools;
 
 use crate::{cfg::CFGStatement, exec::ThreadState, stack::Stack, Expression, Identifier, Lhs, Reference, Rhs, Statement};
 
-use super::{eval::evaluate, eval_assertion, Access, AliasMap, Engine, State};
+use super::{eval::evaluate, eval_assertion, Access, AliasMap, Engine, EngineContext, State};
 
 
-pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGStatement, curr_statement: CFGStatement, en: &mut impl Engine) -> bool {
+pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGStatement, curr_statement: CFGStatement, en: &mut EngineContext) -> bool {
     let mut curr_accesses = get_all_accesses(state, statement.clone(), en);
     let lock_accesses = get_lock_accesses(state, curr_statement.clone(), en);
 
@@ -17,10 +17,12 @@ pub(super) fn validate_quasi_monotonicity(state: &mut State, statement: CFGState
     let mut temp_state = state.clone();
     for thread in state.threads.values_mut().sorted_by_key(|x| x.tid) {
         if let Some(prev_accesses) = thread.prev_accesses.clone() {
+            if thread.tid != state.active_thread { en.statistics.measure_dep_invocation();}
             if thread.tid == state.active_thread || has_access_conflicts(&mut temp_state, en, prev_accesses.clone(), curr_accesses.clone()) {
                 thread.prev_accesses = None;
             } else if thread.tid > state.active_thread {
                 out = false;
+                break;
             }
         }   
     }
@@ -206,5 +208,6 @@ fn has_access_conflicts(state: &mut State, en: &mut impl Engine, prev: Vec<Acces
 
 fn compare_expression(state: &mut State, en: &mut impl Engine, lhs: Rc<Expression>, rhs: Rc<Expression>) -> bool {
     let expr = Rc::new(Expression::BinOp { bin_op: crate::BinOp::Equal, lhs, rhs, type_: crate::RuntimeType::BoolRuntimeType, info: crate::SourcePos::UnknownPosition });
+    println!("{}", expr);
     !eval_assertion(state, expr.clone(), en)
 }

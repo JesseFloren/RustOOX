@@ -75,6 +75,7 @@ fn execute_instruction_for_all_states(
                     program[&state.threads[&state.active_thread].pc].clone(),
                     engine
             ) {
+                engine.statistics.measure_mpor_prune();
                 continue;
             }
         }       
@@ -175,9 +176,12 @@ fn execute_instruction_for_all_states(
                     // Function exit of the main function under verification
                     if let CFGStatement::FunctionExit { .. } = &program[&state.threads.get_mut(&state.active_thread).unwrap().pc] {
                         // Valid program exit, continue
-                        statistics.measure_finish();
                         state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
-                        resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+                        if state.threads.iter().all(|(_, t)| t.state == ThreadState::Finished) {
+                            statistics.measure_finish();
+                        } else {
+                            resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+                        }
                     } else {
                         panic!("Unexpected end of CFG");
                     }
@@ -193,9 +197,12 @@ fn execute_instruction_for_all_states(
                 statistics.measure_prune();
             }
             ActionResult::Finish => {
-                statistics.measure_finish();
                 state.threads.get_mut(&state.active_thread).unwrap().state = ThreadState::Finished;
-                resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+                if state.threads.iter().all(|(_, t)| t.state == ThreadState::Finished) {
+                    statistics.measure_finish();
+                } else {
+                    resulting_states.entry(state.threads.get_mut(&state.active_thread).unwrap().pc).or_default().push(state);
+                }
             },
             ActionResult::Excepted => {
                 statistics.measure_finish();

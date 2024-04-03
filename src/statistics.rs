@@ -9,6 +9,9 @@ pub struct Statistics {
     pub number_of_z3_invocations: u32,
     pub number_of_paths_explored: u64,
     pub total_runtime: u32,
+    // MPOR
+    pub number_of_dep_invocations: u64,
+    pub number_of_mpor_prunes: u32,
     // Coverage
     pub reachable_statements: u32,
     pub covered_statements: u32,
@@ -25,6 +28,8 @@ impl Default for Statistics {
             number_of_verifications: 0,
             number_of_local_solves: 0,
             number_of_z3_invocations: 0,
+            number_of_dep_invocations: 0,
+            number_of_mpor_prunes: 0,
             total_runtime: 0,
             reachable_statements: 0,
             covered_statements: 0,
@@ -58,6 +63,14 @@ impl Statistics {
 
     pub fn measure_invoke_z3(&mut self) {
         self.number_of_z3_invocations += 1;
+    }
+
+    pub fn measure_mpor_prune(&mut self) {
+        self.number_of_mpor_prunes += 1;
+    }
+
+    pub fn measure_dep_invocation(&mut self) {
+        self.number_of_dep_invocations += 1;
     }
 
     pub fn measure_statement_explored(&mut self, pc: u64) {

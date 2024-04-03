@@ -59,11 +59,37 @@ class Array2 {
     }
 }
 
+class Gee {
+    static void main(int[] a) 
+        requires(a != null && #a > 1 && #a < 10 && (forall elem, index : a : elem > 0))
+    {
+        int k := 0;
+        while (k < #a) {
+            a[k] := 0;
+            k := k + 1;
+        }
+        fork Gee.b(a);
+        join;
+        int x := a[2];
+        assert(x == 2);
+    }
+
+    static void b(int[] a) {
+        int k := 0;
+        while (k < #a) {
+            int x := a[k];
+            a[k] := x + 3;
+            k := k + 1;
+        }
+    }
+}
+
 class Foo {
     Foo() {}
-    static void f(int[] a, int k)
-        requires(a != null && #a > 1 && #a < 10 &&  0 <= k && k < #a && (forall elem, index : a : elem > 0))
+    static void f(int[] a)
+        requires(a != null && #a > 1 && #a < 10 && (forall elem, index : a : elem > 0))
     {
+        int k := 2;
         a[k] := 10;
 
         Foo g := new Foo();

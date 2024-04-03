@@ -564,10 +564,20 @@ fn eval_assertion(state: &mut State, expression: Rc<Expression>, en: &mut impl E
     } else {
         let symbolic_refs = find_symbolic_refs(&expression);
         if symbolic_refs.is_empty() {
-            let result = z3_checker::concretization::verify(&expression);
-            if let SatResult::Unsat = result {
-            } else {
+            let expr = evaluate(state, expression.clone(), en);
+            if *expr == Expression::TRUE {
+                en.statistics().measure_local_solve();
+                return true;
+            } else if *expr == Expression::FALSE {
+                en.statistics().measure_local_solve();
                 return false;
+            } else {
+                en.statistics().measure_invoke_z3();
+                let result = z3_checker::concretization::verify(&expression);
+                if let SatResult::Unsat = result {
+                } else {
+                    return false;
+                }
             }
         } else {
             // dbg!(&symbolic_refs);
@@ -594,7 +604,6 @@ fn eval_assertion(state: &mut State, expression: Rc<Expression>, en: &mut impl E
                 true
             };
 
-
             if solve_with_z3_only {
                 // Solve through only Z3
                 let result = z3_checker::all_z3::verify(&expression, &state.alias_map);
@@ -620,8 +629,10 @@ fn eval_assertion(state: &mut State, expression: Rc<Expression>, en: &mut impl E
                 en.statistics().measure_branches(expressions.len() as u32);
                 // dbg!(&expressions);
 
+                
                 for expression in expressions {
                     let expression = evaluate(state, expression, en);
+                    println!("{}", expression);
                     if *expression == Expression::TRUE {
                         // Invalid
                         en.statistics().measure_local_solve();
@@ -1730,7 +1741,6 @@ pub fn verify(
 
     let program = result.into_iter().collect();
 
-    println!("{:?}", program);
     // dbg!(&program);
 
     let flows: HashMap<u64, Vec<u64>> = utils::group_by(flw.into_iter());

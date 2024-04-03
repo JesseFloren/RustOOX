@@ -210,22 +210,34 @@ fn main() -> Result<(), String> {
                         println!("{}", result_text);
                     } else if !options.quiet {
                         println!("Statistics");
-                        println!("  Final result:     {}", result_text);
-                        println!("  time:             {:?}s", duration.as_secs_f64());
-                        println!("  #branches:        {}", statistics.number_of_branches);
-                        println!("  #prunes:          {}", statistics.number_of_prunes);
+                        println!("  Final result:      {}", result_text);
+                        println!("  time:              {:?}s", duration.as_secs_f64());
+                        println!("  #branches:         {}", statistics.number_of_branches);
+                        println!("  #prunes:           {}", statistics.number_of_prunes);
                         println!(
-                            "  #complete_paths:  {}",
+                            "  #complete_paths:   {}",
                             statistics.number_of_complete_paths
                         );
-                        println!("  #locally_solved:  {}", statistics.number_of_local_solves);
                         println!(
-                            "  #Z3 invocations:  {}",
+                            "  #Verifications:    {}",
+                            statistics.number_of_verifications
+                        );
+                        println!("  #locally_solved:   {}", statistics.number_of_local_solves);
+                        println!(
+                            "  #Z3 invocations:   {}",
                             statistics.number_of_z3_invocations
                         );
                         println!(
-                            "  #paths explored:  {}",
+                            "  #paths explored:   {}",
                             statistics.number_of_paths_explored
+                        );
+                        println!(
+                            "  #dep invocations:  {}",
+                            statistics.number_of_dep_invocations
+                        );
+                        println!(
+                            "  #mpor prunes:      {}",
+                            statistics.number_of_mpor_prunes
                         );
                         println!(
                             "  #coverage:        {}/{} ({:.1}%)",
